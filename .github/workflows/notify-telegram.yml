@@ -12,27 +12,48 @@ jobs:
   notify:
     runs-on: ubuntu-latest
     steps:
-      - name: Build message
-        id: message
+      - name: Send to Telegram topic
+        env:
+          BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          THREAD_ID: ${{ secrets.TELEGRAM_MESSAGE_THREAD_ID }}
+          EVENT: ${{ github.event_name }}
+          REPO: ${{ github.repository }}
+          ACTOR: ${{ github.actor }}
+          REF: ${{ github.ref_name }}
+          COMMIT_MSG: ${{ github.event.head_commit.message }}
+          COMMIT_URL: ${{ github.event.head_commit.url }}
+          ISSUE_ACTION: ${{ github.event.action }}
+          ISSUE_TITLE: ${{ github.event.issue.title }}
+          ISSUE_URL: ${{ github.event.issue.html_url }}
+          PR_ACTION: ${{ github.event.action }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
         run: |
-          REPO="${{ github.repository }}"
-          EVENT="${{ github.event_name }}"
+          # Take only first line of commit message
+          FIRST_LINE=$(echo "$COMMIT_MSG" | head -1)
 
           if [ "$EVENT" = "push" ]; then
-            MSG="🔀 *Push to \`${{ github.ref_name }}\`* by ${{ github.actor }}%0A%0ACommit: ${{ github.event.head_commit.message }}%0A${{ github.event.head_commit.url }}"
+            TEXT="*${REPO}*
+
+          Push to \`${REF}\` by ${ACTOR}
+          ${FIRST_LINE}
+          ${COMMIT_URL}"
           elif [ "$EVENT" = "issues" ]; then
-            MSG="📋 *Issue ${{ github.event.action }}:* ${{ github.event.issue.title }}%0A${{ github.event.issue.html_url }}"
+            TEXT="*${REPO}*
+
+          Issue ${ISSUE_ACTION}: ${ISSUE_TITLE}
+          ${ISSUE_URL}"
           elif [ "$EVENT" = "pull_request" ]; then
-            MSG="🔃 *PR ${{ github.event.action }}:* ${{ github.event.pull_request.title }}%0A${{ github.event.pull_request.html_url }}"
+            TEXT="*${REPO}*
+
+          PR ${PR_ACTION}: ${PR_TITLE}
+          ${PR_URL}"
           fi
 
-          echo "text=*${REPO}*%0A%0A${MSG}" >> "$GITHUB_OUTPUT"
-
-      - name: Send to Telegram topic
-        run: |
-          curl -s -X POST \
-            "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
-            -d chat_id="${{ secrets.TELEGRAM_CHAT_ID }}" \
-            -d message_thread_id="${{ secrets.TELEGRAM_MESSAGE_THREAD_ID }}" \
-            -d parse_mode="Markdown" \
-            --data-urlencode "text=$(echo -e '${{ steps.message.outputs.text }}')"
+          curl -sf -X POST \
+            "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
+            -d "chat_id=${CHAT_ID}" \
+            -d "message_thread_id=${THREAD_ID}" \
+            -d "parse_mode=Markdown" \
+            --data-urlencode "text=${TEXT}"
